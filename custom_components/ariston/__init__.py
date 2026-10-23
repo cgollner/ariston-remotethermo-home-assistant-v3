@@ -111,12 +111,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         bus_errors_scan_interval_seconds = entry.options.get(
             BUS_ERRORS_SCAN_INTERVAL, DEFAULT_BUS_ERRORS_SCAN_INTERVAL_SECONDS
         )
+
+        async def _async_get_bus_errors():
+            try:
+                return await device.async_get_bus_errors()
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug(
+                    "Unable to fetch bus errors for %s (endpoint returned %s); ignoring",
+                    device.gateway,
+                    err,
+                )
+                if getattr(device, "bus_errors_list", None) is None:
+                    device.bus_errors_list = []
+                return device.bus_errors_list
+
         bus_errors_coordinator = DeviceDataUpdateCoordinator(
             hass,
             device,
             bus_errors_scan_interval_seconds,
             BUS_ERRORS_COORDINATOR,
-            device.async_get_bus_errors,
+            _async_get_bus_errors,
         )
         hass.data[DOMAIN][entry.unique_id][BUS_ERRORS_COORDINATOR] = (
             bus_errors_coordinator
@@ -127,12 +141,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             energy_interval_minutes = entry.options.get(
                 ENERGY_SCAN_INTERVAL, DEFAULT_ENERGY_SCAN_INTERVAL_MINUTES
             )
+
+            async def _async_update_energy():
+                try:
+                    return await device.async_update_energy()
+                except Exception as err:  # noqa: BLE001
+                    _LOGGER.warning(
+                        "Unable to fetch energy data for %s (endpoint returned %s); ignoring",
+                        device.gateway,
+                        err,
+                    )
+                    return None
+
             energy_coordinator = DeviceDataUpdateCoordinator(
                 hass,
                 device,
                 energy_interval_minutes * 60,
                 ENERGY_COORDINATOR,
-                device.async_update_energy,
+                _async_update_energy,
             )
             hass.data[DOMAIN][entry.unique_id][ENERGY_COORDINATOR] = energy_coordinator
             await energy_coordinator.async_config_entry_first_refresh()
